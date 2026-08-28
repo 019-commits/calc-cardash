@@ -343,13 +343,26 @@ async function automaticUpdate() {
 =========================================================
 */
 
+```js
 app.listen(
     PORT,
     () => {
 
         console.log(
-            `Server started on port ${PORT}`
+            "Server started on port " + PORT
         );
+
+        automaticUpdate();
+
+        setInterval(
+            automaticUpdate,
+            10 * 60 * 1000
+        );
+
+    }
+);
+```
+
 
 
         /*
