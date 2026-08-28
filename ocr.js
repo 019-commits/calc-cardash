@@ -2,75 +2,85 @@
 const Tesseract = require("tesseract.js");
 
 /**
- * Распознаёт текст с изображения.
+ * Распознавание текста с картинки.
  */
 async function recognizeText(imageBuffer) {
     if (!imageBuffer) {
-        throw new Error("OCR: изображение не передано");
+        throw new Error(
+            "OCR: изображение не передано"
+        );
     }
 
-    console.log("Запускаем Tesseract OCR...");
-
-    const result = await Tesseract.recognize(
-        imageBuffer,
-        "eng+rus",
-        {
-            logger: (info) => {
-                if (
-                    info.status === "recognizing text" &&
-                    typeof info.progress === "number"
-                ) {
-                    console.log(
-                        `OCR: ${Math.round(info.progress * 100)}%`
-                    );
-                }
-            }
-        }
+    console.log(
+        "Запускаем Tesseract OCR..."
     );
 
-    const text = result?.data?.text || "";
+    const result =
+        await Tesseract.recognize(
+            imageBuffer,
+            "eng+rus",
+            {
+                logger: (info) => {
+                    if (
+                        info.status ===
+                        "recognizing text"
+                    ) {
+                        const progress =
+                            Math.round(
+                                info.progress * 100
+                            );
+
+                        console.log(
+                            `OCR: ${progress}%`
+                        );
+                    }
+                }
+            }
+        );
+
+    const text =
+        result &&
+        result.data &&
+        result.data.text
+            ? result.data.text
+            : "";
+
+    console.log(
+        "========== OCR TEXT =========="
+    );
+
+    console.log(text);
+
+    console.log(
+        "==============================="
+    );
 
     if (!text.trim()) {
-        throw new Error("OCR не распознал текст");
+        throw new Error(
+            "OCR не распознал текст"
+        );
     }
-
-    console.log("========== OCR TEXT ==========");
-    console.log(text);
-    console.log("===============================");
 
     return text;
 }
 
 /**
- * Приводим OCR-текст к более удобному виду.
- */
-function normalizeText(text) {
-    return text
-        .replace(/\r/g, "\n")
-        .replace(/[|]/g, " ")
-        .replace(/[ \t]+/g, " ")
-        .replace(/\n{3,}/g, "\n")
-        .trim();
-}
-
-/**
- * Преобразование OCR-числа в Number.
- *
- * OCR может вернуть:
- * 87,20
- * 87.20
- * 0,5530
- * 0.5530
+ * Преобразование найденного значения
+ * в число.
  */
 function parseNumber(value) {
-    if (!value) return null;
+    if (!value) {
+        return null;
+    }
 
-    let normalized = String(value)
-        .trim()
-        .replace(",", ".")
-        .replace(/[^\d.]/g, "");
+    let normalized =
+        String(value)
+            .trim()
+            .replace(",", ".")
+            .replace(/[^\d.]/g, "");
 
-    const parts = normalized.split(".");
+    const parts =
+        normalized.split(".");
 
     if (parts.length > 2) {
         normalized =
@@ -79,148 +89,188 @@ function parseNumber(value) {
             parts.slice(1).join("");
     }
 
-    const number = Number(normalized);
+    const number =
+        Number(normalized);
 
-    return Number.isFinite(number) ? number : null;
-}
-
-/**
- * Ищет число рядом с названием курса.
- *
- * Например:
- * USD 87.20
- * USD: 87.20
- * Swift 0.5530
- */
-function findRate(text, patterns) {
-    for (const pattern of patterns) {
-        const match = text.match(pattern);
-
-        if (match) {
-            const value = parseNumber(match[1]);
-
-            if (value !== null) {
-                return value;
-            }
-        }
+    if (!Number.isFinite(number)) {
+        return null;
     }
 
-    return null;
+    return number;
 }
 
 /**
- * Распознаёт курсы из OCR.
- *
- * ВАЖНО:
- * Мы не заменяем существующие курсы,
- * если конкретное значение не удалось распознать.
+ * Ищет курс по регулярному выражению.
+ */
+function findRate(text, pattern) {
+    const match =
+        text.match(pattern);
+
+    if (!match) {
+        return null;
+    }
+
+    return parseNumber(
+        match[1]
+    );
+}
+
+/**
+ * Распознаёт курсы валют
+ * из текста OCR.
  */
 async function recognizeRates(imageBuffer) {
-    const rawText = await recognizeText(imageBuffer);
-    const text = normalizeText(rawText);
+    const text =
+        await recognizeText(
+            imageBuffer
+        );
 
     const rates = {};
 
     /*
      * USD
      */
-    const usd = findRate(text, [
-        /USD[\s:=-]+(\d+[.,]\d+)/i,
-        /US[D0][\s:=-]+(\d+[.,]\d+)/i,
-        /доллар[\s\S]{0,30}?(\d+[.,]\d+)/i
-    ]);
+    const usd =
+        findRate(
+            text,
+            /USD[\s:=\-]+(\d+[.,]\d+)/i
+        );
 
     if (usd !== null) {
         rates.USD = usd;
     }
 
     /*
-     * USD IDUBID
+     * USD / IDUBID
      */
-    const usdIdubid = findRate(text, [
-        /USD[\s\S]{0,50}?IDUBID[\s:=-]+(\d+[.,]\d+)/i,
-        /IDUBID[\s:=-]+(\d+[.,]\d+)/i
-    ]);
+    const usdIdubid =
+        findRate(
+            text,
+            /IDUBID[\s:=\-]+(\d+[.,]\d+)/i
+        );
 
     if (usdIdubid !== null) {
-        rates.USD_IDUBID = usdIdubid;
+        rates.USD_IDUBID =
+            usdIdubid;
     }
 
     /*
-     * JPY Swift
+     * JPY / SWIFT
      */
-    const jpySwift = findRate(text, [
-        /JPY[\s\S]{0,50}?SWIFT[\s:=-]+(\d+[.,]\d+)/i,
-        /SWIFT[\s\S]{0,30}?(\d+[.,]\d+)/i
-    ]);
+    const jpySwift =
+        findRate(
+            text,
+            /SWIFT[\s:=\-]+(\d+[.,]\d+)/i
+        );
 
     if (jpySwift !== null) {
-        rates.JPY_SWIFT = jpySwift;
+        rates.JPY_SWIFT =
+            jpySwift;
     }
 
     /*
-     * JPY Internal
+     * JPY / INTERNAL
      */
-    const jpyInternal = findRate(text, [
-        /JPY[\s\S]{0,50}?INTERNAL[\s:=-]+(\d+[.,]\d+)/i,
-        /INTERNAL[\s:=-]+(\d+[.,]\d+)/i
-    ]);
+    const jpyInternal =
+        findRate(
+            text,
+            /INTERNAL[\s:=\-]+(\d+[.,]\d+)/i
+        );
 
     if (jpyInternal !== null) {
-        rates.JPY_INTERNAL = jpyInternal;
+        rates.JPY_INTERNAL =
+            jpyInternal;
     }
 
     /*
-     * JPY AFA CASH
+     * AFA / CASH
      */
-    const jpyAfaCash = findRate(text, [
-        /AFA[\s\S]{0,30}?CASH[\s:=-]+(\d+[.,]\d+)/i,
-        /CASH[\s:=-]+(\d+[.,]\d+)/i
-    ]);
-
-    if (jpyAfaCash !== null) {
-        rates.JPY_AFA_CASH = jpyAfaCash;
-    }
-
-    /*
-     * JPY AFA QR
-     */
-    const jpyAfaQr = findRate(text, [
-        /AFA[\s\S]{0,30}?QR[\s:=-]+(\d+[.,]\d+)/i,
-        /QR[\s:=-]+(\d+[.,]\d+)/i
-    ]);
-
-    if (jpyAfaQr !== null) {
-        rates.JPY_AFA_QR = jpyAfaQr;
-    }
-
-    /*
-     * Остальные валюты.
-     */
-    const currencies = [
-        ["CNY", /CNY[\s:=-]+(\d+[.,]\d+)/i],
-        ["KRW", /KRW[\s:=-]+(\d+[.,]\d+)/i],
-        ["THB", /THB[\s:=-]+(\d+[.,]\d+)/i],
-        ["AED", /AED[\s:=-]+(\d+[.,]\d+)/i]
-    ];
-
-    for (const [key, pattern] of currencies) {
-        const value = findRate(text, [pattern]);
-
-        if (value !== null) {
-            rates[key] = value;
-        }
-    }
-
-    console.log("========== RECOGNIZED RATES ==========");
-    console.log(rates);
-    console.log("=======================================");
-
-    if (Object.keys(rates).length === 0) {
-        throw new Error(
-            "OCR отработал, но курсы не удалось распознать"
+    const afaCash =
+        findRate(
+            text,
+            /CASH[\s:=\-]+(\d+[.,]\d+)/i
         );
+
+    if (afaCash !== null) {
+        rates.JPY_AFA_CASH =
+            afaCash;
     }
+
+    /*
+     * AFA / QR
+     */
+    const afaQr =
+        findRate(
+            text,
+            /QR[\s:=\-]+(\d+[.,]\d+)/i
+        );
+
+    if (afaQr !== null) {
+        rates.JPY_AFA_QR =
+            afaQr;
+    }
+
+    /*
+     * CNY
+     */
+    const cny =
+        findRate(
+            text,
+            /CNY[\s:=\-]+(\d+[.,]\d+)/i
+        );
+
+    if (cny !== null) {
+        rates.CNY = cny;
+    }
+
+    /*
+     * KRW
+     */
+    const krw =
+        findRate(
+            text,
+            /KRW[\s:=\-]+(\d+[.,]\d+)/i
+        );
+
+    if (krw !== null) {
+        rates.KRW = krw;
+    }
+
+    /*
+     * THB
+     */
+    const thb =
+        findRate(
+            text,
+            /THB[\s:=\-]+(\d+[.,]\d+)/i
+        );
+
+    if (thb !== null) {
+        rates.THB = thb;
+    }
+
+    /*
+     * AED
+     */
+    const aed =
+        findRate(
+            text,
+            /AED[\s:=\-]+(\d+[.,]\d+)/i
+        );
+
+    if (aed !== null) {
+        rates.AED = aed;
+    }
+
+    console.log(
+        "========== RECOGNIZED RATES =========="
+    );
+
+    console.log(rates);
+
+    console.log(
+        "======================================="
+    );
 
     return rates;
 }
