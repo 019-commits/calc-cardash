@@ -2,61 +2,40 @@ const axios = require("axios");
 
 const CHANNEL = "LoyaltySwift";
 
-const USER_AGENT =
-"Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-"AppleWebKit/537.36 (KHTML, like Gecko) " +
-"Chrome/131.0 Safari/537.36";
+/**
 
-function decodeHtml(value) {
-return String(value)
-.replace(/&/g, "&")
-.replace(/"/g, '"')
-.replace(/'/g, "'")
-.replace(/</g, "<")
-.replace(/>/g, ">");
-}
-
-/*
-
-* Получаем HTML публичной ленты Telegram.
+* Получает самое свежее изображение из публичного Telegram-канала.
+*
+* Использует публичную страницу:
+* https://t.me/s/LoyaltySwift
+*
+* Токен бота и Telegram-аккаунт не нужны.
   */
-  async function getTelegramPage() {
-  const url =
-  "https://t.me/s/" + CHANNEL;
+  async function getTelegramImage() {
+  const channelUrl = `https://t.me/s/${CHANNEL}`;
 
   console.log(
   "Открываем Telegram:",
-  url
+  channelUrl
   );
 
-  const response =
-  await axios.get(
-  url,
+  const response = await axios.get(
+  channelUrl,
   {
   timeout: 30000,
-  maxRedirects: 5,
   headers: {
   "User-Agent":
-  USER_AGENT,
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+  "AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) " +
+  "Chrome/131.0 Safari/537.36",
   "Accept":
-  "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language":
-  "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
+  "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
   }
   }
   );
 
-  const html =
-  response.data;
-
-  if (
-  typeof html !== "string" ||
-  html.length === 0
-  ) {
-  throw new Error(
-  "Telegram не вернул HTML"
-  );
-  }
+  const html = String(response.data || "");
 
   console.log(
   "Telegram HTML получен:",
@@ -64,283 +43,176 @@ return String(value)
   "bytes"
   );
 
-  return html;
-  }
+  /*
 
-/*
+  * Ищем картинки Telegram.
+  *
+  * Telegram обычно хранит фотографию поста
+  * внутри background-image:url(...)
+    */
+    const urls = [];
 
-* Находим все Telegram CDN картинки
-* в публичной ленте.
-  */
-  function findImageUrls(html) {
-  const urls = [];
+  const backgroundRegex =
+  /background-image\s*:\s*url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi;
 
-  const marker =
-  "background-image:url(";
+  let match;
 
-  let position = 0;
-
-  while (true) {
-  const start =
-  html.indexOf(
-  marker,
-  position
-  );
-
-  
-   if (start === -1) {
-       break;
-   }
-
-   const urlStart =
-       start + marker.length;
-
-   const urlEnd =
-       html.indexOf(
-           ")",
-           urlStart
-       );
-
-   if (urlEnd === -1) {
-       break;
-   }
-
-   let value =
-       html.substring(
-           urlStart,
-           urlEnd
-       ).trim();
-
-   value =
-       value.replace(
-           /^["']/,
-           ""
-       );
-
-   value =
-       value.replace(
-           /["']$/,
-           ""
-       );
-
-   value =
-       decodeHtml(value);
-
-   if (
-       value.startsWith(
-           "https://cdn"
-       ) &&
-       value.includes(
-           ".telesco.pe/file/"
-       )
-   ) {
-       if (
-           !urls.includes(value)
-       ) {
-           urls.push(value);
-       }
-   }
-
-   position =
-       urlEnd + 1;
-  
-
-  }
-
-  return urls;
-  }
-
-/*
-
-* Запасной поиск CDN-ссылок.
-  */
-  function findDirectCdnUrls(html) {
-  const urls = [];
-
-  const regex =
-  /https://cdn\d+.telesco.pe/file/[^"'<>\\s]+/gi;
-
-  const matches =
-  html.match(regex);
-
-  if (!matches) {
-  return urls;
-  }
-
-  for (
-  const value of matches
+  while (
+  (match = backgroundRegex.exec(html)) !== null
   ) {
-  const url =
-  decodeHtml(
-  value
-  ).replace(
-  /[),;]+$/,
-  ""
-  );
-
- 
-   if (
-       !urls.includes(url)
-   ) {
-       urls.push(url);
-   }
-  
-
-  }
-
-  return urls;
-  }
-
-/*
-
-* Загружаем изображение и ЯВНО
-* возвращаем Buffer.
-  */
-  async function downloadImage(url) {
-  console.log(
-  "Скачиваем изображение:"
-  );
-
-  console.log(url);
-
-  const response =
-  await axios.get(
-  url,
-  {
-  responseType:
-  "arraybuffer",
-  timeout: 30000,
-  maxRedirects: 5,
-  headers: {
-  "User-Agent":
-  USER_AGENT,
-  "Referer":
-  "https://t.me/"
+  if (match[1]) {
+  urls.push(match[1]);
   }
   }
-  );
-
-  const buffer =
-  Buffer.from(
-  response.data
-  );
-
-  console.log(
-  "Проверка Buffer:",
-  Buffer.isBuffer(buffer)
-  );
-
-  console.log(
-  "Размер Buffer:",
-  buffer.length,
-  "bytes"
-  );
-
-  if (
-  !Buffer.isBuffer(buffer)
-  ) {
-  throw new Error(
-  "Не удалось создать Buffer изображения"
-  );
-  }
-
-  if (
-  buffer.length === 0
-  ) {
-  throw new Error(
-  "Получено пустое изображение"
-  );
-  }
-
-  return buffer;
-  }
-
-/*
-
-* Главная функция.
-*
-* ВАЖНО:
-* Возвращает именно Buffer.
-  */
-  async function getTelegramImage() {
-  const html =
-  await getTelegramPage();
-
-  let images =
-  findImageUrls(html);
 
   console.log(
   "Картинок через background-image:",
-  images.length
+  urls.length
   );
 
-  if (
-  images.length === 0
+  /*
+
+  * Дополнительно ищем прямые ссылки
+  * на CDN Telegram.
+    */
+    const cdnRegex =
+    /https?://cdn\d+.telesco.pe/file/[^"'<>\\s]+/gi;
+
+  while (
+  (match = cdnRegex.exec(html)) !== null
   ) {
-  images =
-  findDirectCdnUrls(
-  html
-  );
+  if (match[0]) {
+  urls.push(match[0]);
+  }
+  }
+
+  /*
+
+  * Также проверяем og:image.
+    */
+    const ogPatterns = [
+    /<meta[^>]+property=["']og:image[^>]+content=["']([^%22']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^%22']+)["'][^>]+property=["']og:image[^>]*>/i
+    ];
+
+  for (const pattern of ogPatterns) {
+  const ogMatch = html.match(pattern);
 
  
-   console.log(
-       "Картинок через прямой CDN поиск:",
-       images.length
-   );
- 
+   if (ogMatch && ogMatch[1]) {
+       urls.push(ogMatch[1]);
+   }
+  
 
   }
 
-  if (
-  images.length === 0
-  ) {
+  /*
+
+  * Чистим ссылки.
+    */
+    const cleanUrls = urls
+    .map((url) =>
+    String(url)
+    .replace(/&/g, "&")
+    .replace(/\u0026/g, "&")
+    .trim()
+    )
+    .filter((url) =>
+    url.startsWith("http://") ||
+    url.startsWith("https://")
+    )
+    .filter((url) =>
+    url.includes("telesco.pe") ||
+    url.includes("telegram")
+    );
+
+  /*
+
+  * Убираем дубликаты.
+    */
+    const uniqueUrls = [
+    ...new Set(cleanUrls)
+    ];
+
+  if (uniqueUrls.length === 0) {
   throw new Error(
-  "В публичной ленте Telegram не найдено изображение"
+  "Не удалось найти изображение в Telegram"
   );
   }
 
   /*
 
-  * Последняя найденная картинка —
-  * самая свежая среди отображённых
-  * в ленте.
+  * На странице /s/ посты идут от новых к старым.
+  * Поэтому первая подходящая картинка обычно
+  * относится к самому свежему посту.
+  *
+  * Однако выбираем первую найденную,
+  * а не последнюю картинку страницы,
+  * потому что один пост может содержать
+  * несколько изображений.
     */
-    const latestImage =
-    images[images.length - 1];
+    const imageUrl = uniqueUrls[0];
 
   console.log(
   "Самая свежая найденная картинка:"
   );
 
   console.log(
-  latestImage
+  imageUrl
   );
 
-  const buffer =
-  await downloadImage(
-  latestImage
+  console.log(
+  "Скачиваем изображение..."
+  );
+
+  const imageResponse =
+  await axios.get(
+  imageUrl,
+  {
+  responseType: "arraybuffer",
+  timeout: 30000,
+  maxContentLength:
+  20 * 1024 * 1024,
+  maxBodyLength:
+  20 * 1024 * 1024,
+  headers: {
+  "User-Agent":
+  "Mozilla/5.0",
+  "Referer":
+  channelUrl
+  }
+  }
+  );
+
+  const imageBuffer =
+  Buffer.from(
+  imageResponse.data
+  );
+
+  if (
+  !imageBuffer ||
+  imageBuffer.length === 0
+  ) {
+  throw new Error(
+  "Telegram вернул пустое изображение"
+  );
+  }
+
+  console.log(
+  "Изображение загружено:",
+  imageBuffer.length,
+  "bytes"
   );
 
   /*
 
-  * Финальная проверка перед return.
+  * ВАЖНО:
+  * Возвращаем именно Buffer,
+  * потому что server.js передаёт его
+  * непосредственно в recognizeRates().
     */
-    if (
-    !Buffer.isBuffer(buffer)
-    ) {
-    throw new Error(
-    "downloadImage не вернул Buffer"
-    );
+    return imageBuffer;
     }
-
-  console.log(
-  "Передаём Buffer в server.js:",
-  buffer.length,
-  "bytes"
-  );
-
-  return buffer;
-  }
 
 module.exports = {
 getTelegramImage
