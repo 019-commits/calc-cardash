@@ -1,287 +1,413 @@
 const axios = require("axios");
 
-const TELEGRAM_POST =
-"https://t.me/LoyaltySwift/1344";
+const CHANNEL = "LoyaltySwift";
 
-async function getTelegramImage() {
-
-
-console.log(
-    "Открываем Telegram:",
-    TELEGRAM_POST
-);
-
-
-const response =
-    await axios.get(
-        TELEGRAM_POST,
-        {
-            timeout: 30000,
-
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                    "AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) " +
-                    "Chrome/131.0.0.0 Safari/537.36",
-
-                "Accept":
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-
-                "Accept-Language":
-                    "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
-            },
-
-            maxRedirects: 10
-        }
-    );
-
-
-const html =
-    String(response.data || "");
-
-
-console.log(
-    "Telegram HTML получен:",
-    html.length,
-    "bytes"
-);
-
+const HEADERS = {
+"User-Agent":
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+"AppleWebKit/537.36 (KHTML, like Gecko) " +
+"Chrome/131.0 Safari/537.36",
+"Accept":
+"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+"Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
+};
 
 /*
- * Ищем изображение несколькими способами.
- */
+
+* Получает HTML публичной ленты Telegram.
+  */
+  async function getTelegramHtml() {
+  const url = `https://t.me/s/${CHANNEL}`;
+
+  console.log(
+  "Открываем ленту Telegram:",
+  url
+  );
+
+  const response = await axios.get(
+  url,
+  {
+  timeout: 30000,
+  headers: HEADERS,
+  maxRedirects: 5
+  }
+  );
+
+  if (
+  !response.data ||
+  typeof response.data !== "string"
+  ) {
+  throw new Error(
+  "Telegram не вернул HTML"
+  );
+  }
+
+  console.log(
+  "Telegram HTML получен:",
+  response.data.length,
+  "bytes"
+  );
+
+  return response.data;
+  }
+
+/*
+
+* Извлекает URL картинки из CSS background-image.
+*
+* Telegram использует примерно такой HTML:
+*
+* <a class="tgme_widget_message_photo_wrap"
+* style="background-image:url('[https://cdn...jpg')">](https://cdn...jpg'%29%22>)
+  */
+  function extractBackgroundImage(value) {
+  if (!value) {
+  return null;
+  }
+
 
 const patterns = [
 
-    /*
-     * og:image
-     */
-    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-
-    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["'][^>]*>/i,
 
 
-    /*
-     * twitter:image
-     */
-    /<meta[^>]+property=["']twitter:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-
-    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']twitter:image["'][^>]*>/i,
-
-
-    /*
-     * Любой telesco.pe URL внутри HTML.
-     */
-    /(https?:\/\/cdn\d+\.telesco\.pe\/file\/[^"'\\\s<>]+)/i,
-
-
-    /*
-     * URL без протокола.
-     */
-    /(\/\/cdn\d+\.telesco\.pe\/file\/[^"'\\\s<>]+)/i
+    /url\(\s*["']([^"']+)["']\s*\)/i,
+    /url\(\s*([^)"']+)\s*\)/i
 ];
 
+for (const pattern of patterns) {
+    const match = value.match(pattern);
 
-let imageUrl = null;
-
-
-for (
-    const pattern of patterns
-) {
-
-    const match =
-        html.match(pattern);
-
-
-    if (
-        match &&
-        match[1]
-    ) {
-
-        imageUrl =
-            match[1];
-
-        console.log(
-            "URL изображения найден способом:",
-            pattern.toString()
+    if (match && match[1]) {
+        return decodeHtmlEntities(
+            match[1].trim()
         );
-
-        break;
     }
 }
 
+return null;
+
+
+}
 
 /*
- * Дополнительный поиск:
- *
- * Telegram может экранировать URL.
- */
 
-if (!imageUrl) {
+* Декодирование HTML entities.
+  */
+  function decodeHtmlEntities(value) {
+  return value
+  .replace(/&/g, "&")
+  .replace(/"/g, '"')
+  .replace(/'/g, "'")
+  .replace(/</g, "<")
+  .replace(/>/g, ">");
+  }
 
-    const escaped =
-        html.match(
-            /https?:\\\/\\\/cdn\d+\.telesco\.pe\\\/file\\\/[^"'\\\s<>]+/i
-        );
+/*
 
+* Получает картинки именно из сообщений Telegram.
+*
+* ВАЖНО:
+* Не используем og:image, потому что для /s/channel
+* это может быть картинка самого канала, а не поста.
+  */
+  function extractPostImages(html) {
+  const images = [];
 
-    if (
-        escaped &&
-        escaped[0]
+  /*
+
+  * Каждый Telegram-пост имеет:
+  *
+  * tgme_widget_message_wrap
+  *
+  * Внутри фотографии находятся:
+  *
+  * tgme_widget_message_photo_wrap
+    */
+    const messageRegex =
+    /<div[^>]+class=["'][^"']*tgme_widget_message_wrap[^"']*["'][\s\S]*?(?=<div[^>]+class=["'][^"']*tgme_widget_message_wrap|</main>|$)/gi;
+
+  const messages = [];
+  let messageMatch;
+
+  while (
+  (messageMatch =
+  messageRegex.exec(html)) !== null
+  ) {
+  messages.push(messageMatch[0]);
+  }
+
+  console.log(
+  "Найдено блоков сообщений:",
+  messages.length
+  );
+
+  /*
+
+  * Telegram обычно отдаёт сообщения
+  * от старых к новым.
+  *
+  * Поэтому начинаем с конца.
+    */
+    for (
+    let i = messages.length - 1;
+    i >= 0;
+    i--
     ) {
-
-        imageUrl =
-            escaped[0]
-                .replace(/\\\//g, "/");
-
-        console.log(
-            "URL изображения найден в экранированном виде"
-        );
-    }
-}
-
-
-if (!imageUrl) {
+    const message = messages[i];
 
     /*
-     * Последняя попытка:
-     * ищем любую ссылку на .jpg/.jpeg/.png
-     */
 
-    const generic =
-        html.match(
-            /https?:\/\/[^"'\\\s<>]+\.(?:jpg|jpeg|png)(?:\?[^"'\\\s<>]*)?/i
-        );
+    * Ищем фотографию внутри конкретного поста.
+      */
+      const photoRegex =
+      /class=["'][^"']*tgme_widget_message_photo_wrap[^"']*["'][^>]*style=["'][^"']*background-image\s*:\s*url\(([^)]+)\)[^"']*["'][^>]*|style=["'][^"']*background-image\s*:\s*url\(([^)]+)\)[^"']*["'][^>]*class=["'][^"']*tgme_widget_message_photo_wrap[^"']*["']/gi;
 
+    let photoMatch;
 
-    if (
-        generic &&
-        generic[0]
+    while (
+    (photoMatch =
+    photoRegex.exec(message)) !== null
     ) {
+    const rawUrl =
+    photoMatch[1] ||
+    photoMatch[2];
 
-        imageUrl =
-            generic[0];
+   
+     const imageUrl =
+         extractBackgroundImage(
+             rawUrl
+         );
 
-        console.log(
-            "Найдено изображение общим поиском"
-        );
+     if (
+         imageUrl &&
+         /^https?:\/\//i.test(imageUrl)
+     ) {
+         images.push({
+             url: imageUrl,
+             message: message
+         });
+
+         break;
+     }
+   
+
     }
-}
-
-
-if (!imageUrl) {
-
-    console.error(
-        "Telegram не вернул URL картинки."
-    );
-
-    console.error(
-        "Размер HTML:",
-        html.length
-    );
 
     /*
-     * Показываем начало HTML,
-     * чтобы при необходимости понять,
-     * что именно вернул Telegram.
-     */
 
-    console.error(
-        html.substring(0, 2000)
-    );
+    * Иногда style и class расположены
+    * в другом порядке.
+    *
+    * Поэтому дополнительный поиск.
+      */
+      if (
+      !images.length ||
+      images[images.length - 1].message !== message
+      ) {
+      const fallbackRegex =
+      /<a[^>]+class=["'][^"']*tgme_widget_message_photo_wrap[^"']*["'][^>]*style=["']([^%22']+)["'][^>]*>/gi;
 
-    throw new Error(
-        "Не удалось найти изображение в Telegram"
-    );
-}
+      let fallbackMatch;
 
+      while (
+      (fallbackMatch =
+      fallbackRegex.exec(message)) !== null
+      ) {
+      const imageUrl =
+      extractBackgroundImage(
+      fallbackMatch[1]
+      );
+
+     
+       if (
+           imageUrl &&
+           /^https?:\/\//i.test(imageUrl)
+       ) {
+           images.push({
+               url: imageUrl,
+               message: message
+           });
+
+           break;
+       }
+     
+
+      }
+      }
+
+    /*
+
+    * Нам нужна самая свежая фотография.
+      */
+      if (images.length > 0) {
+      break;
+      }
+      }
+
+  return images;
+  }
 
 /*
- * Декодируем HTML-сущности.
- */
 
-imageUrl =
-    imageUrl
-        .replace(/&amp;/g, "&")
-        .replace(/&#x2F;/gi, "/")
-        .replace(/\\u002F/g, "/")
-        .replace(/\\\//g, "/");
+* Более надёжный общий поиск Telegram CDN.
+*
+* Это запасной вариант, если структура HTML
+* немного изменилась.
+  */
+  function extractCdnImages(html) {
+  const urls = [];
 
+  const patterns = [
+  /https://cdn\d+.telesco.pe/file/[^"'\\s<>]+/gi,
+  /https://cdn\d+.telesco.pe/file/[^"'\\s<>]+.jpg/gi
+  ];
+
+  for (const pattern of patterns) {
+  const matches =
+  html.match(pattern);
+
+
+   if (!matches) {
+       continue;
+   }
+
+   for (const value of matches) {
+       const url =
+           decodeHtmlEntities(
+               value
+           );
+
+       if (
+           !urls.includes(url)
+       ) {
+           urls.push(url);
+       }
+   }
+  
+
+  }
+
+  return urls;
+  }
 
 /*
- * Если URL начинается с //,
- * добавляем https.
- */
 
-if (
-    imageUrl.startsWith("//")
-) {
+* Загружает картинку.
+  */
+  async function downloadImage(imageUrl) {
+  console.log(
+  "Скачиваем изображение:",
+  imageUrl
+  );
 
-    imageUrl =
-        "https:" +
-        imageUrl;
-}
+  const response =
+  await axios.get(
+  imageUrl,
+  {
+  responseType:
+  "arraybuffer",
+  timeout: 30000,
+  headers: {
+  "User-Agent":
+  HEADERS["User-Agent"],
+  "Accept":
+  "image/avif,image/webp,image/apng,image/jpeg,image/png,*/*;q=0.8",
+  "Referer":
+  "https://t.me/"
+  },
+  maxRedirects: 5
+  }
+  );
 
+  const buffer =
+  Buffer.from(
+  response.data
+  );
 
-console.log(
-    "Найдена картинка:",
-    imageUrl
-);
+  if (!buffer.length) {
+  throw new Error(
+  "Telegram вернул пустое изображение"
+  );
+  }
 
+  console.log(
+  "Изображение загружено:",
+  buffer.length,
+  "bytes"
+  );
+
+  return buffer;
+  }
 
 /*
- * Загружаем сам файл.
- */
 
-const imageResponse =
-    await axios.get(
-        imageUrl,
-        {
-            responseType: "arraybuffer",
+* Главная функция.
+*
+* Возвращает Buffer самой свежей
+* фотографии из публичного канала.
+  */
+  async function getTelegramImage() {
+  const html =
+  await getTelegramHtml();
 
-            timeout: 30000,
+  /*
 
-            maxRedirects: 10,
+  * Сначала ищем фотографии
+  * непосредственно внутри постов.
+    */
+    const postImages =
+    extractPostImages(html);
 
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0",
+  if (postImages.length > 0) {
+  const image =
+  postImages[0];
 
-                "Referer":
-                    TELEGRAM_POST
-            }
-        }
+  
+   console.log(
+       "Свежая картинка найдена в посте:",
+       image.url
+   );
+
+   return downloadImage(
+       image.url
+   );
+ 
+
+  }
+
+  /*
+
+  * Резервный способ.
+  *
+  * Если Telegram немного поменял
+  * HTML-разметку, пробуем найти
+  * CDN-картинки напрямую.
+    */
+    console.log(
+    "Фото поста стандартным способом не найдено."
     );
 
+  const cdnImages =
+  extractCdnImages(html);
 
-const imageBuffer =
-    Buffer.from(
-        imageResponse.data
-    );
+  if (cdnImages.length > 0) {
+  console.log(
+  "Найдена CDN-картинка резервным способом:",
+  cdnImages[0]
+  );
 
+ 
+   return downloadImage(
+       cdnImages[0]
+   );
+  
 
-if (
-    !imageBuffer.length
-) {
+  }
 
-    throw new Error(
-        "Telegram вернул пустое изображение"
-    );
-}
-
-
-console.log(
-    "Изображение загружено:",
-    imageBuffer.length,
-    "bytes"
-);
-
-
-return imageBuffer;
-
-
-}
+  throw new Error(
+  "В последних постах Telegram не найдено изображение"
+  );
+  }
 
 module.exports = {
 getTelegramImage
