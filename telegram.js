@@ -1,11 +1,10 @@
-```js
 const axios = require("axios");
 
 /**
  * Получает картинку из Telegram-поста.
  *
  * Возвращает Buffer изображения,
- * который напрямую передаётся в OCR.
+ * который передаётся напрямую в OCR.
  */
 async function getTelegramImage() {
     const telegramUrl =
@@ -32,6 +31,15 @@ async function getTelegramImage() {
 
     const html = response.data;
 
+    if (
+        !html ||
+        typeof html !== "string"
+    ) {
+        throw new Error(
+            "Telegram вернул пустой HTML"
+        );
+    }
+
     const patterns = [
         /property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
         /content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
@@ -44,7 +52,10 @@ async function getTelegramImage() {
     for (const pattern of patterns) {
         const match = html.match(pattern);
 
-        if (match && match[1]) {
+        if (
+            match &&
+            match[1]
+        ) {
             imageUrl = match[1];
             break;
         }
@@ -66,21 +77,40 @@ async function getTelegramImage() {
         imageUrl
     );
 
-    const imageResponse = await axios.get(
-        imageUrl,
-        {
-            responseType: "arraybuffer",
-            timeout: 30000,
-            headers: {
-                "User-Agent": "Mozilla/5.0"
+    const imageResponse =
+        await axios.get(
+            imageUrl,
+            {
+                responseType:
+                    "arraybuffer",
+
+                timeout: 30000,
+
+                headers: {
+                    "User-Agent":
+                        "Mozilla/5.0"
+                }
             }
-        }
-    );
+        );
 
     const imageBuffer =
-        Buffer.from(imageResponse.data);
+        Buffer.from(
+            imageResponse.data
+        );
 
-    if (!imageBuffer.length) {
+    if (
+        !Buffer.isBuffer(
+            imageBuffer
+        )
+    ) {
+        throw new Error(
+            "Не удалось создать Buffer изображения"
+        );
+    }
+
+    if (
+        imageBuffer.length === 0
+    ) {
         throw new Error(
             "Telegram вернул пустое изображение"
         );
@@ -98,4 +128,3 @@ async function getTelegramImage() {
 module.exports = {
     getTelegramImage
 };
-```
