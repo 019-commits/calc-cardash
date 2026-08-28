@@ -1,3 +1,4 @@
+```js
 const express = require("express");
 const path = require("path");
 
@@ -52,10 +53,15 @@ const FALLBACK_RATES = {
 };
 
 
+/*
+=========================================================
+ ТЕКУЩИЕ КУРСЫ
+=========================================================
+*/
+
 let currentRates = {
     ...FALLBACK_RATES
 };
-
 
 let lastUpdate = null;
 
@@ -102,7 +108,7 @@ app.get(
 
 /*
 =========================================================
- ОБНОВЛЕНИЕ
+ API / MANUAL UPDATE
 =========================================================
 */
 
@@ -125,7 +131,13 @@ app.get(
 
         } catch (error) {
 
-            console.error(error);
+            console.error(
+                "Ошибка ручного обновления:",
+                error
+            );
+
+            lastError =
+                error.message;
 
             res.status(500).json({
 
@@ -148,58 +160,55 @@ app.get(
 =========================================================
 */
 
-```js
 async function updateRates() {
+
     console.log(
         "Ищем последнюю картинку в Telegram..."
     );
 
+
+    /*
+    -----------------------------------------------------
+    Получаем изображение из Telegram
+    -----------------------------------------------------
+    */
+
     const image =
-        await getTelegramImage(
-            TELEGRAM_CHANNEL
-        );
+        await getTelegramImage();
+
 
     if (!image) {
+
         throw new Error(
-            "Не удалось найти картинку в Telegram"
+            "Не удалось загрузить картинку из Telegram"
         );
+
     }
 
-    if (!image.url) {
-        throw new Error(
-            "Telegram не вернул URL изображения"
-        );
-    }
-
-    if (!image.buffer) {
-        throw new Error(
-            "Telegram не вернул Buffer изображения"
-        );
-    }
 
     console.log(
-        "Найдена картинка:",
-        image.url
-    );
-
-    console.log(
-        "Размер изображения:",
-        image.buffer.length,
+        "Картинка из Telegram загружена:",
+        image.length,
         "bytes"
     );
+
+
+    /*
+    -----------------------------------------------------
+    OCR
+    -----------------------------------------------------
+    */
 
     console.log(
         "Запускаем OCR..."
     );
 
-    /*
-     * ВАЖНО:
-     * Передаём Buffer, а не image.url.
-     */
+
     const recognized =
         await recognizeRates(
-            image.buffer
+            image
         );
+
 
     console.log(
         "OCR результат:"
@@ -209,53 +218,48 @@ async function updateRates() {
         recognized
     );
 
+
+    /*
+    -----------------------------------------------------
+    Проверяем результат OCR
+    -----------------------------------------------------
+    */
+
     if (
         !recognized ||
-        typeof recognized !== "object" ||
-        Object.keys(recognized).length === 0
+        typeof recognized !== "object"
     ) {
+
         throw new Error(
-            "OCR не вернул ни одного курса"
+            "OCR не вернул результат"
         );
+
     }
 
-    /*
-     * Обновляем только реально
-     * распознанные значения.
-     */
-    currentRates = {
-        ...currentRates,
-        ...recognized
-    };
 
-    lastUpdate =
-        new Date().toISOString();
+    const recognizedKeys =
+        Object.keys(
+            recognized
+        );
 
-    lastImage =
-        image.url;
 
-    lastError = null;
+    if (
+        recognizedKeys.length === 0
+    ) {
 
-    console.log(
-        "Курсы успешно обновлены:"
-    );
+        throw new Error(
+            "OCR не смог распознать ни одного курса"
+        );
 
-    console.log(
-        currentRates
-    );
-
-    return {
-        rates: currentRates,
-        image: image.url,
-        updatedAt: lastUpdate
-    };
-}
-```
+    }
 
 
     /*
-    Не заменяем весь объект,
-    если OCR что-то не распознал.
+    -----------------------------------------------------
+    Обновляем только распознанные курсы.
+    Нераспознанные значения остаются
+    из FALLBACK / предыдущего обновления.
+    -----------------------------------------------------
     */
 
     currentRates = {
@@ -267,25 +271,32 @@ async function updateRates() {
     };
 
 
+    /*
+    -----------------------------------------------------
+    Сохраняем информацию об обновлении
+    -----------------------------------------------------
+    */
+
     lastUpdate =
         new Date().toISOString();
 
-
-    lastImage =
-        image.url;
-
-
     lastError =
         null;
+
+
+    console.log(
+        "Курсы успешно обновлены:"
+    );
+
+    console.log(
+        currentRates
+    );
 
 
     return {
 
         rates:
             currentRates,
-
-        image:
-            image.url,
 
         updatedAt:
             lastUpdate
@@ -342,14 +353,18 @@ app.listen(
 
 
         /*
-        Первая загрузка.
+        -------------------------------------------------
+        Первая загрузка
+        -------------------------------------------------
         */
 
         automaticUpdate();
 
 
         /*
-        Потом каждые 10 минут.
+        -------------------------------------------------
+        Потом каждые 10 минут
+        -------------------------------------------------
         */
 
         setInterval(
@@ -362,3 +377,4 @@ app.listen(
 
     }
 );
+```
