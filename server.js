@@ -148,47 +148,58 @@ app.get(
 =========================================================
 */
 
+```js
 async function updateRates() {
-
     console.log(
         "Ищем последнюю картинку в Telegram..."
     );
-
 
     const image =
         await getTelegramImage(
             TELEGRAM_CHANNEL
         );
 
-
     if (!image) {
-
         throw new Error(
             "Не удалось найти картинку в Telegram"
         );
-
     }
 
+    if (!image.url) {
+        throw new Error(
+            "Telegram не вернул URL изображения"
+        );
+    }
+
+    if (!image.buffer) {
+        throw new Error(
+            "Telegram не вернул Buffer изображения"
+        );
+    }
 
     console.log(
-        "Найдена картинка:"
-    );
-
-    console.log(
+        "Найдена картинка:",
         image.url
     );
 
+    console.log(
+        "Размер изображения:",
+        image.buffer.length,
+        "bytes"
+    );
 
     console.log(
         "Запускаем OCR..."
     );
 
-
+    /*
+     * ВАЖНО:
+     * Передаём Buffer, а не image.url.
+     */
     const recognized =
         await recognizeRates(
-            image.url
+            image.buffer
         );
-
 
     console.log(
         "OCR результат:"
@@ -197,6 +208,49 @@ async function updateRates() {
     console.log(
         recognized
     );
+
+    if (
+        !recognized ||
+        typeof recognized !== "object" ||
+        Object.keys(recognized).length === 0
+    ) {
+        throw new Error(
+            "OCR не вернул ни одного курса"
+        );
+    }
+
+    /*
+     * Обновляем только реально
+     * распознанные значения.
+     */
+    currentRates = {
+        ...currentRates,
+        ...recognized
+    };
+
+    lastUpdate =
+        new Date().toISOString();
+
+    lastImage =
+        image.url;
+
+    lastError = null;
+
+    console.log(
+        "Курсы успешно обновлены:"
+    );
+
+    console.log(
+        currentRates
+    );
+
+    return {
+        rates: currentRates,
+        image: image.url,
+        updatedAt: lastUpdate
+    };
+}
+```
 
 
     /*
