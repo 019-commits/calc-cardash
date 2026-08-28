@@ -18,7 +18,7 @@ return String(value)
 
 /*
 
-* Получаем публичную ленту канала.
+* Получаем HTML публичной ленты Telegram.
   */
   async function getTelegramPage() {
   const url =
@@ -69,11 +69,8 @@ return String(value)
 
 /*
 
-* Ищем URL фотографий Telegram.
-*
-* Не используем сложные регулярки.
-* Берём все background-image:url(...)
-* из HTML и проверяем, что это CDN Telegram.
+* Находим все Telegram CDN картинки
+* в публичной ленте.
   */
   function findImageUrls(html) {
   const urls = [];
@@ -90,7 +87,7 @@ return String(value)
   position
   );
 
- 
+  
    if (start === -1) {
        break;
    }
@@ -98,7 +95,7 @@ return String(value)
    const urlStart =
        start + marker.length;
 
-   let urlEnd =
+   const urlEnd =
        html.indexOf(
            ")",
            urlStart
@@ -129,10 +126,6 @@ return String(value)
    value =
        decodeHtml(value);
 
-   /*
-    * Нас интересуют именно картинки
-    * с Telegram CDN.
-    */
    if (
        value.startsWith(
            "https://cdn"
@@ -150,7 +143,7 @@ return String(value)
 
    position =
        urlEnd + 1;
- 
+  
 
   }
 
@@ -159,83 +152,39 @@ return String(value)
 
 /*
 
-* Дополнительный способ поиска:
-* ищем прямые ссылки cdn*.telesco.pe/file/...
+* Запасной поиск CDN-ссылок.
   */
   function findDirectCdnUrls(html) {
   const urls = [];
 
-  const marker =
-  "https://cdn";
+  const regex =
+  /https://cdn\d+.telesco.pe/file/[^"'<>\\s]+/gi;
 
-  let position = 0;
+  const matches =
+  html.match(regex);
 
-  while (true) {
-  const start =
-  html.indexOf(
-  marker,
-  position
+  if (!matches) {
+  return urls;
+  }
+
+  for (
+  const value of matches
+  ) {
+  const url =
+  decodeHtml(
+  value
+  ).replace(
+  /[),;]+$/,
+  ""
   );
 
  
-   if (start === -1) {
-       break;
-   }
-
-   const endCandidates = [
-       html.indexOf('"', start),
-       html.indexOf("'", start),
-       html.indexOf("<", start),
-       html.indexOf(" ", start),
-       html.indexOf("\n", start)
-   ].filter(
-       value => value !== -1
-   );
-
    if (
-       endCandidates.length === 0
+       !urls.includes(url)
    ) {
-       break;
+       urls.push(url);
    }
-
-   const end =
-       Math.min(
-           ...endCandidates
-       );
-
-   let value =
-       html.substring(
-           start,
-           end
-       );
-
-   value =
-       decodeHtml(value);
-
-   /*
-    * Очищаем возможные хвосты.
-    */
-   value =
-       value.replace(
-           /[),;]+$/,
-           ""
-       );
-
-   if (
-       value.includes(
-           ".telesco.pe/file/"
-       )
-   ) {
-       if (
-           !urls.includes(value)
-       ) {
-           urls.push(value);
-       }
-   }
-
-   position =
-       end + 1;
- 
+  
 
   }
 
@@ -244,7 +193,8 @@ return String(value)
 
 /*
 
-* Скачиваем изображение.
+* Загружаем изображение и ЯВНО
+* возвращаем Buffer.
   */
   async function downloadImage(url) {
   console.log(
@@ -275,20 +225,32 @@ return String(value)
   response.data
   );
 
-  if (
-  !buffer ||
-  buffer.length === 0
-  ) {
-  throw new Error(
-  "Telegram вернул пустое изображение"
+  console.log(
+  "Проверка Buffer:",
+  Buffer.isBuffer(buffer)
   );
-  }
 
   console.log(
-  "Изображение загружено:",
+  "Размер Buffer:",
   buffer.length,
   "bytes"
   );
+
+  if (
+  !Buffer.isBuffer(buffer)
+  ) {
+  throw new Error(
+  "Не удалось создать Buffer изображения"
+  );
+  }
+
+  if (
+  buffer.length === 0
+  ) {
+  throw new Error(
+  "Получено пустое изображение"
+  );
+  }
 
   return buffer;
   }
@@ -297,42 +259,37 @@ return String(value)
 
 * Главная функция.
 *
-* Возвращает Buffer самой свежей
-* найденной фотографии.
+* ВАЖНО:
+* Возвращает именно Buffer.
   */
   async function getTelegramImage() {
   const html =
   await getTelegramPage();
 
-  /*
-
-  * Сначала ищем background-image.
-    */
-    let images =
-    findImageUrls(html);
+  let images =
+  findImageUrls(html);
 
   console.log(
   "Картинок через background-image:",
   images.length
   );
 
-  /*
+  if (
+  images.length === 0
+  ) {
+  images =
+  findDirectCdnUrls(
+  html
+  );
 
-  * Если не нашли — ищем CDN напрямую.
-    */
-    if (
-    images.length === 0
-    ) {
-    images =
-    findDirectCdnUrls(
-    html
-    );
+ 
+   console.log(
+       "Картинок через прямой CDN поиск:",
+       images.length
+   );
+ 
 
-    console.log(
-    "Картинок через прямой CDN поиск:",
-    images.length
-    );
-    }
+  }
 
   if (
   images.length === 0
@@ -344,11 +301,9 @@ return String(value)
 
   /*
 
-  * Telegram отдаёт сообщения
-  * в порядке от старых к новым.
-  *
-  * Поэтому берём последнюю найденную
-  * картинку.
+  * Последняя найденная картинка —
+  * самая свежая среди отображённых
+  * в ленте.
     */
     const latestImage =
     images[images.length - 1];
@@ -361,9 +316,30 @@ return String(value)
   latestImage
   );
 
-  return downloadImage(
+  const buffer =
+  await downloadImage(
   latestImage
   );
+
+  /*
+
+  * Финальная проверка перед return.
+    */
+    if (
+    !Buffer.isBuffer(buffer)
+    ) {
+    throw new Error(
+    "downloadImage не вернул Buffer"
+    );
+    }
+
+  console.log(
+  "Передаём Buffer в server.js:",
+  buffer.length,
+  "bytes"
+  );
+
+  return buffer;
   }
 
 module.exports = {
