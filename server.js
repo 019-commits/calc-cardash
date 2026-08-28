@@ -9,23 +9,23 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 const TELEGRAM_CHANNEL =
-    process.env.TELEGRAM_CHANNEL || "LoyaltySwift";
+process.env.TELEGRAM_CHANNEL || "LoyaltySwift";
 
 const FALLBACK_RATES = {
-    USD: 87.20,
-    USD_IDUBID: 88.70,
-    JPY_SWIFT: 0.5530,
-    JPY_INTERNAL: 0.5530,
-    JPY_AFA_CASH: 0.5580,
-    JPY_AFA_QR: 0.5580,
-    CNY: 13.15,
-    KRW: 0.0636,
-    THB: 2.70,
-    AED: 23.50
+USD: 87.20,
+USD_IDUBID: 88.70,
+JPY_SWIFT: 0.5530,
+JPY_INTERNAL: 0.5530,
+JPY_AFA_CASH: 0.5580,
+JPY_AFA_QR: 0.5580,
+CNY: 13.15,
+KRW: 0.0636,
+THB: 2.70,
+AED: 23.50
 };
 
 let currentRates = {
-    ...FALLBACK_RATES
+...FALLBACK_RATES
 };
 
 let lastUpdate = null;
@@ -35,170 +35,234 @@ let lastError = null;
 app.use(express.json());
 
 app.use(
-    express.static(
-        path.join(__dirname, "public")
-    )
+express.static(
+path.join(__dirname, "public")
+)
 );
 
-app.get("/api/rates", (req, res) => {
-    res.setHeader(
-        "Cache-Control",
-        "no-store, no-cache, must-revalidate"
-    );
+/*
 
-    res.json({
-        success: true,
-        rates: currentRates,
-        updatedAt: lastUpdate,
-        image: lastImage,
-        source: "Telegram / LoyaltySwift",
-        error: lastError
-    });
-});
+* Текущие курсы
+  */
+  app.get("/api/rates", (req, res) => {
+  res.setHeader(
+  "Cache-Control",
+  "no-store, no-cache, must-revalidate"
+  );
 
-app.get("/api/update", async (req, res) => {
-    try {
-        const result = await updateRates();
+  res.json({
+  success: true,
+  rates: currentRates,
+  updatedAt: lastUpdate,
+  image: lastImage,
+  source: "Telegram / LoyaltySwift",
+  error: lastError
+  });
+  });
 
-        res.json({
-            success: true,
-            result: result
-        });
-    } catch (error) {
-        console.error(
-            "Ошибка ручного обновления:",
-            error
-        );
+/*
 
-        lastError = error.message;
+* Ручное обновление
+  */
+  app.get("/api/update", async (req, res) => {
+  try {
+  const result = await updateRates();
 
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
+  
+   res.json({
+       success: true,
+       result
+   });
+ 
 
-async function updateRates() {
-    console.log(
-        "Ищем последнюю картинку в Telegram..."
-    );
+  } catch (error) {
+  console.error(
+  "Ошибка ручного обновления:",
+  error
+  );
 
-    const image = await getTelegramImage(
-        TELEGRAM_CHANNEL
-    );
+ 
+   lastError = error.message;
 
-    if (!image) {
-        throw new Error(
-            "Не удалось получить изображение из Telegram"
-        );
-    }
+   res.status(500).json({
+       success: false,
+       error: error.message
+   });
 
-    if (!Buffer.isBuffer(image)) {
-        throw new Error(
-            "telegram.js должен вернуть Buffer изображения"
-        );
-    }
 
-    if (image.length === 0) {
-        throw new Error(
-            "Получено пустое изображение"
-        );
-    }
+  }
+  });
 
-    console.log(
-        "Изображение получено:",
-        image.length,
-        "bytes"
-    );
+/*
 
-    console.log(
-        "Запускаем OCR..."
-    );
+* Получение картинки + OCR + обновление курсов
+  */
+  async function updateRates() {
+  console.log(
+  "Ищем последнюю картинку в Telegram..."
+  );
 
-    const recognized =
-        await recognizeRates(image);
+  const image = await getTelegramImage(
+  TELEGRAM_CHANNEL
+  );
 
-    console.log(
-        "OCR результат:"
-    );
+  if (!image) {
+  throw new Error(
+  "Не удалось получить изображение из Telegram"
+  );
+  }
 
-    console.log(
-        recognized
-    );
+  /*
 
+  * telegram.js возвращает:
+  *
+  * {
+  * ```
+    buffer: Buffer,
+   
+  * 
+    url: "https://..."
+    
+  * }
+    */
+
+  if (!Buffer.isBuffer(image.buffer)) {
+  throw new Error(
+  "telegram.js не вернул Buffer изображения"
+  );
+  }
+
+  if (image.buffer.length === 0) {
+  throw new Error(
+  "Получено пустое изображение"
+  );
+  }
+
+  console.log(
+  "Найдена картинка:",
+  image.url
+  );
+
+  console.log(
+  "Размер изображения:",
+  image.buffer.length,
+  "bytes"
+  );
+
+  console.log(
+  "Запускаем OCR..."
+  );
+
+  const recognized =
+  await recognizeRates(
+  image.buffer
+  );
+
+  console.log(
+  "OCR результат:",
+  recognized
+  );
+
+  /*
+
+  * Если OCR ничего не нашёл,
+  * старые курсы не ломаем.
+    */
     if (
-        !recognized ||
-        typeof recognized !== "object"
+    !recognized ||
+    typeof recognized !== "object" ||
+    Object.keys(recognized).length === 0
     ) {
-        throw new Error(
-            "OCR не вернул объект с курсами"
-        );
+    throw new Error(
+    "OCR не смог распознать ни одного курса"
+    );
     }
 
-    const keys =
-        Object.keys(recognized);
+  /*
 
-    if (keys.length === 0) {
-        throw new Error(
-            "OCR не смог распознать ни одного курса"
-        );
-    }
-
+  * Обновляем только найденные значения.
+    */
     currentRates = {
-        ...currentRates,
-        ...recognized
+    ...currentRates,
+    ...recognized
     };
 
-    lastUpdate =
-        new Date().toISOString();
+  lastUpdate =
+  new Date().toISOString();
 
-    lastError = null;
+  lastImage =
+  image.url;
 
-    console.log(
-        "Курсы успешно обновлены:"
-    );
+  lastError = null;
 
-    console.log(
-        currentRates
-    );
+  console.log(
+  "Курсы успешно обновлены:"
+  );
 
-    return {
-        rates: currentRates,
-        updatedAt: lastUpdate
-    };
-}
+  console.log(
+  currentRates
+  );
 
-async function automaticUpdate() {
-    try {
-        await updateRates();
+  return {
+  rates: currentRates,
+  image: image.url,
+  updatedAt: lastUpdate
+  };
+  }
 
-        console.log(
-            "Курсы успешно обновлены"
-        );
-    } catch (error) {
-        lastError =
-            error.message;
+/*
 
-        console.error(
-            "Ошибка обновления:",
-            error.message
-        );
-    }
-}
+* Автоматическое обновление.
+  */
+  async function automaticUpdate() {
+  try {
+  await updateRates();
 
-app.listen(
-    PORT,
-    () => {
-        console.log(
-            "Server started on port " + PORT
-        );
+ 
+   console.log(
+       "Курсы успешно обновлены"
+   );
+ 
 
-        automaticUpdate();
+  } catch (error) {
+  lastError =
+  error.message;
 
-        setInterval(
-            automaticUpdate,
-            10 * 60 * 1000
-        );
-    }
-);
+  
+   console.error(
+       "Ошибка обновления:",
+       error.message
+   );
+ 
+
+  }
+  }
+
+/*
+
+* Запуск сервера.
+  */
+  app.listen(
+  PORT,
+  () => {
+  console.log(
+  "Server started on port " + PORT
+  );
+
+ 
+   /*
+    * Запускаем обновление сразу.
+    */
+   automaticUpdate();
+
+   /*
+    * Потом каждые 10 минут.
+    */
+   setInterval(
+       automaticUpdate,
+       10 * 60 * 1000
+   );
+
+
+  }
+  );
