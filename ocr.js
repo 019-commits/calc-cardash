@@ -1,9 +1,6 @@
 ```js
 const Tesseract = require("tesseract.js");
 
-/**
- * Распознавание текста с изображения.
- */
 async function recognizeText(imageBuffer) {
     if (!imageBuffer) {
         throw new Error("OCR: изображение не передано");
@@ -46,9 +43,6 @@ async function recognizeText(imageBuffer) {
     return text;
 }
 
-/**
- * Преобразование OCR-значения в число.
- */
 function parseNumber(value) {
     if (!value) {
         return null;
@@ -77,9 +71,6 @@ function parseNumber(value) {
     return number;
 }
 
-/**
- * Ищет курс по регулярному выражению.
- */
 function findRate(text, pattern) {
     const match = text.match(pattern);
 
@@ -90,9 +81,6 @@ function findRate(text, pattern) {
     return parseNumber(match[1]);
 }
 
-/**
- * Распознаёт курсы валют из OCR-текста.
- */
 async function recognizeRates(imageBuffer) {
     const rawText =
         await recognizeText(imageBuffer);
@@ -107,9 +95,6 @@ async function recognizeRates(imageBuffer) {
 
     const rates = {};
 
-    /*
-     * USD
-     */
     const usd = findRate(
         text,
         /USD[\s:=\-]+(\d+[.,]\d+)/i
@@ -119,9 +104,6 @@ async function recognizeRates(imageBuffer) {
         rates.USD = usd;
     }
 
-    /*
-     * USD / IDUBID
-     */
     const usdIdubid = findRate(
         text,
         /IDUBID[\s:=\-]+(\d+[.,]\d+)/i
@@ -131,9 +113,6 @@ async function recognizeRates(imageBuffer) {
         rates.USD_IDUBID = usdIdubid;
     }
 
-    /*
-     * JPY / SWIFT
-     */
     const jpySwift = findRate(
         text,
         /SWIFT[\s:=\-]+(\d+[.,]\d+)/i
@@ -143,9 +122,6 @@ async function recognizeRates(imageBuffer) {
         rates.JPY_SWIFT = jpySwift;
     }
 
-    /*
-     * JPY / INTERNAL
-     */
     const jpyInternal = findRate(
         text,
         /INTERNAL[\s:=\-]+(\d+[.,]\d+)/i
@@ -155,9 +131,6 @@ async function recognizeRates(imageBuffer) {
         rates.JPY_INTERNAL = jpyInternal;
     }
 
-    /*
-     * AFA / CASH
-     */
     const afaCash = findRate(
         text,
         /CASH[\s:=\-]+(\d+[.,]\d+)/i
@@ -167,9 +140,6 @@ async function recognizeRates(imageBuffer) {
         rates.JPY_AFA_CASH = afaCash;
     }
 
-    /*
-     * AFA / QR
-     */
     const afaQr = findRate(
         text,
         /QR[\s:=\-]+(\d+[.,]\d+)/i
@@ -179,9 +149,6 @@ async function recognizeRates(imageBuffer) {
         rates.JPY_AFA_QR = afaQr;
     }
 
-    /*
-     * CNY
-     */
     const cny = findRate(
         text,
         /CNY[\s:=\-]+(\d+[.,]\d+)/i
@@ -191,9 +158,6 @@ async function recognizeRates(imageBuffer) {
         rates.CNY = cny;
     }
 
-    /*
-     * KRW
-     */
     const krw = findRate(
         text,
         /KRW[\s:=\-]+(\d+[.,]\d+)/i
@@ -203,9 +167,6 @@ async function recognizeRates(imageBuffer) {
         rates.KRW = krw;
     }
 
-    /*
-     * THB
-     */
     const thb = findRate(
         text,
         /THB[\s:=\-]+(\d+[.,]\d+)/i
@@ -215,9 +176,6 @@ async function recognizeRates(imageBuffer) {
         rates.THB = thb;
     }
 
-    /*
-     * AED
-     */
     const aed = findRate(
         text,
         /AED[\s:=\-]+(\d+[.,]\d+)/i
