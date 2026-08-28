@@ -1,4 +1,3 @@
-```js
 const Tesseract = require("tesseract.js");
 
 async function recognizeText(imageBuffer) {
@@ -202,4 +201,3 @@ module.exports = {
     recognizeText,
     recognizeRates
 };
-```
