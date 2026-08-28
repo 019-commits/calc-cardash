@@ -1,0 +1,15 @@
+{
+  "name": "calc-cardash",
+  "version": "1.0.0",
+  "description": "CalcCardash.ru calculator with Telegram OCR rates",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
+    "axios": "^1.7.9",
+    "tesseract.js": "^6.0.1"
+  }
+}
