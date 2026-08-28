@@ -40,12 +40,6 @@ app.use(
     )
 );
 
-
-/*
- * GET /api/rates
- *
- * Возвращает текущие курсы.
- */
 app.get("/api/rates", (req, res) => {
     res.setHeader(
         "Cache-Control",
@@ -62,12 +56,6 @@ app.get("/api/rates", (req, res) => {
     });
 });
 
-
-/*
- * GET /api/update
- *
- * Ручное обновление курсов.
- */
 app.get("/api/update", async (req, res) => {
     try {
         const result = await updateRates();
@@ -91,20 +79,11 @@ app.get("/api/update", async (req, res) => {
     }
 });
 
-
-/*
- * Обновление курсов.
- */
 async function updateRates() {
     console.log(
         "Ищем последнюю картинку в Telegram..."
     );
 
-    /*
-     * Получаем картинку.
-     *
-     * telegram.js должен вернуть Buffer.
-     */
     const image = await getTelegramImage(
         TELEGRAM_CHANNEL
     );
@@ -115,9 +94,6 @@ async function updateRates() {
         );
     }
 
-    /*
-     * Проверяем, что получили именно Buffer.
-     */
     if (!Buffer.isBuffer(image)) {
         throw new Error(
             "telegram.js должен вернуть Buffer изображения"
@@ -140,9 +116,6 @@ async function updateRates() {
         "Запускаем OCR..."
     );
 
-    /*
-     * Передаём Buffer напрямую в OCR.
-     */
     const recognized =
         await recognizeRates(image);
 
@@ -172,12 +145,6 @@ async function updateRates() {
         );
     }
 
-    /*
-     * Обновляем только распознанные значения.
-     *
-     * Если какой-то курс OCR не увидел,
-     * старое значение сохраняется.
-     */
     currentRates = {
         ...currentRates,
         ...recognized
@@ -202,10 +169,6 @@ async function updateRates() {
     };
 }
 
-
-/*
- * Автоматическое обновление.
- */
 async function automaticUpdate() {
     try {
         await updateRates();
@@ -214,7 +177,8 @@ async function automaticUpdate() {
             "Курсы успешно обновлены"
         );
     } catch (error) {
-        lastError = error.message;
+        lastError =
+            error.message;
 
         console.error(
             "Ошибка обновления:",
@@ -223,26 +187,18 @@ async function automaticUpdate() {
     }
 }
 
+app.listen(
+    PORT,
+    () => {
+        console.log(
+            "Server started on port " + PORT
+        );
 
-/*
- * Запуск сервера.
- */
-app.listen(PORT, () => {
-    console.log(
-        "Server started on port " + PORT
-    );
+        automaticUpdate();
 
-    /*
-     * Первое обновление сразу после запуска.
-     */
-    automaticUpdate();
-
-    /*
-     * Затем обновляем каждые 10 минут.
-     */
-    setInterval(
-        automaticUpdate,
-        10 * 60 * 1000
-    );
-});
-```
+        setInterval(
+            automaticUpdate,
+            10 * 60 * 1000
+        );
+    }
+);
