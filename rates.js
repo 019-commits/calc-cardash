@@ -1,59 +1,88 @@
-const {
-    getTelegramImage
-} = require("./telegram");
+const FALLBACK_RATES = {
+USD: 87.20,
+USD_IDUBID: 88.70,
 
-const {
-    recognizeText
-} = require("./ocr");
+```
+JPY_SWIFT: 0.5530,
+JPY_INTERNAL: 0.5530,
+JPY_AFA_CASH: 0.5580,
+JPY_AFA_QR: 0.5580,
+
+CNY: 13.15,
+KRW: 0.0636,
+THB: 2.70,
+AED: 23.50
 
 
-async function getRates() {
+};
 
-    console.log(
-        "Ищем последнюю картинку в Telegram..."
+async function loadRates() {
+try {
+const response =
+await fetch(
+"/api/rates",
+{
+cache: "no-store"
+}
+);
+
+
+    if (!response.ok) {
+        throw new Error(
+            "HTTP " +
+            response.status
+        );
+    }
+
+    const data =
+        await response.json();
+
+    if (
+        data &&
+        data.success &&
+        data.rates
+    ) {
+        return data.rates;
+    }
+
+    throw new Error(
+        "Сервер не вернул курсы"
     );
 
-    const image =
-        await getTelegramImage();
-
-    console.log(
-        "Картинка получена:",
-        image.length,
-        "bytes"
+} catch (error) {
+    console.error(
+        "Ошибка загрузки курсов:",
+        error
     );
-
-    const text =
-        await recognizeText(image);
-
-    console.log(
-        "OCR завершён."
-    );
-
-    /*
-     * Пока не пытаемся угадывать курсы.
-     * Сначала посмотрим настоящий текст,
-     * который распознал OCR.
-     */
 
     return {
-
-        USD_SWIFT: 0,
-        USD_IDUBID: 0,
-
-        JPY_SWIFT: 0,
-        JPY_INTERNAL: 0,
-        JPY_CASH: 0,
-        JPY_QR: 0,
-
-        CNY: 0,
-        KRW: 0,
-        THB: 0,
-        AED: 0
-
+        ...FALLBACK_RATES
     };
 }
 
 
+}
+
+if (
+typeof window !==
+"undefined"
+) {
+window.loadRates =
+loadRates;
+
+
+window.FALLBACK_RATES =
+    FALLBACK_RATES;
+
+
+}
+
+if (
+typeof module !==
+"undefined"
+) {
 module.exports = {
-    getRates
+FALLBACK_RATES,
+loadRates
 };
+}
