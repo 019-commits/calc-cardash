@@ -1,40 +1,51 @@
 const Tesseract = require("tesseract.js");
 
-async function recognizeRates(imageBuffer) {
+async function recognizeText(imageBuffer) {
 
-    console.log("OCR: начинаем распознавание...");
-
-    const result = await Tesseract.recognize(
-        imageBuffer,
-        "rus+eng",
-        {
-            logger: info => {
-
-                if (info.status) {
-                    console.log(
-                        `OCR: ${info.status} ${
-                            info.progress
-                                ? Math.round(info.progress * 100) + "%"
-                                : ""
-                        }`
-                    );
-                }
-
-            }
-        }
+    console.log(
+        "Начинаем OCR..."
     );
+
+    const result =
+        await Tesseract.recognize(
+            imageBuffer,
+            "eng+rus",
+            {
+                logger: info => {
+
+                    if (
+                        info.status === "recognizing text"
+                    ) {
+
+                        console.log(
+                            "OCR:",
+                            Math.round(
+                                info.progress * 100
+                            ) + "%"
+                        );
+
+                    }
+
+                }
+            }
+        );
 
     const text =
         result.data.text || "";
 
     console.log(
-        "OCR TEXT:\n",
-        text
+        "========== OCR TEXT =========="
+    );
+
+    console.log(text);
+
+    console.log(
+        "==============================="
     );
 
     return text;
 }
 
 module.exports = {
-    recognizeRates
+    recognizeText
 };
