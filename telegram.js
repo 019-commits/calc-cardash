@@ -1,9 +1,15 @@
 ```js
 const axios = require("axios");
 
-async function getTelegramImage(channel = "LoyaltySwift") {
+/**
+ * Получает картинку из Telegram-поста.
+ *
+ * Возвращает Buffer изображения,
+ * который напрямую передаётся в OCR.
+ */
+async function getTelegramImage() {
     const telegramUrl =
-        `https://t.me/${channel}/1344`;
+        "https://t.me/LoyaltySwift/1344";
 
     console.log(
         "Открываем Telegram:",
@@ -38,7 +44,7 @@ async function getTelegramImage(channel = "LoyaltySwift") {
     for (const pattern of patterns) {
         const match = html.match(pattern);
 
-        if (match?.[1]) {
+        if (match && match[1]) {
             imageUrl = match[1];
             break;
         }
@@ -71,10 +77,10 @@ async function getTelegramImage(channel = "LoyaltySwift") {
         }
     );
 
-    const buffer =
+    const imageBuffer =
         Buffer.from(imageResponse.data);
 
-    if (!buffer.length) {
+    if (!imageBuffer.length) {
         throw new Error(
             "Telegram вернул пустое изображение"
         );
@@ -82,14 +88,11 @@ async function getTelegramImage(channel = "LoyaltySwift") {
 
     console.log(
         "Изображение загружено:",
-        buffer.length,
+        imageBuffer.length,
         "bytes"
     );
 
-    return {
-        url: imageUrl,
-        buffer
-    };
+    return imageBuffer;
 }
 
 module.exports = {
