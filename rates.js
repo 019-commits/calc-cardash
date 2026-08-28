@@ -1,30 +1,38 @@
 const {
-    downloadTelegramImage
+    getTelegramImage
 } = require("./telegram");
 
 const {
-    recognizeRates
+    recognizeText
 } = require("./ocr");
+
 
 async function getRates() {
 
-    const image =
-        await downloadTelegramImage();
+    console.log(
+        "Ищем последнюю картинку в Telegram..."
+    );
 
-    const text =
-        await recognizeRates(image);
+    const image =
+        await getTelegramImage();
 
     console.log(
-        "Полученный текст:",
-        text
+        "Картинка получена:",
+        image.length,
+        "bytes"
+    );
+
+    const text =
+        await recognizeText(image);
+
+    console.log(
+        "OCR завершён."
     );
 
     /*
-     * Пока возвращаем структуру,
-     * которую ожидает твой калькулятор.
-     *
-     * Распознавание конкретных цифр
-     * добавим после проверки OCR.
+     * Пока не пытаемся угадывать курсы.
+     * Сначала посмотрим настоящий текст,
+     * который распознал OCR.
      */
 
     return {
@@ -43,8 +51,8 @@ async function getRates() {
         AED: 0
 
     };
-
 }
+
 
 module.exports = {
     getRates
