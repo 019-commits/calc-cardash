@@ -1,448 +1,192 @@
-const Tesseract = require("tesseract.js");
+const Tesseract =
+    require("tesseract.js");
 
-async function recognizeText(
-imageBuffer
-) {
-if (
-!Buffer.isBuffer(
-imageBuffer
-)
-) {
-throw new Error(
-"OCR: нужен Buffer изображения"
-);
-}
+const sharp =
+    require("sharp");
 
+const {
+    parseRates
+} = require("./rates");
 
-if (
-    imageBuffer.length === 0
+async function runTesseract(
+    buffer,
+    psm
 ) {
-    throw new Error(
-        "OCR: изображение пустое"
+    console.log(
+        "Запускаем Tesseract, PSM:",
+        psm
     );
-}
 
-console.log(
-    "Запускаем Tesseract OCR..."
-);
-
-const result =
-    await Tesseract.recognize(
-        imageBuffer,
-        "eng+rus",
-        {
-            logger: (info) => {
-                if (
-                    info.status ===
-                    "recognizing text" &&
-                    typeof info.progress ===
-                        "number"
-                ) {
-                    console.log(
-                        "OCR:",
-                        Math.round(
-                            info.progress *
+    const result =
+        await Tesseract.recognize(
+            buffer,
+            "eng+rus",
+            {
+                logger: message => {
+                    if (
+                        message.status ===
+                        "recognizing text"
+                    ) {
+                        const percent =
+                            Math.round(
+                                (message.progress || 0) *
                                 100
-                        ) + "%"
-                    );
+                            );
+
+                        console.log(
+                            "OCR:",
+                            percent + "%"
+                        );
+                    }
+                },
+                config: {
+                    tessedit_pageseg_mode:
+                        String(psm)
                 }
             }
-        }
-    );
-
-const text =
-    result &&
-    result.data &&
-    result.data.text
-        ? result.data.text
-        : "";
-
-console.log(
-    "========== OCR TEXT =========="
-);
-
-console.log(text);
-
-console.log(
-    "==============================="
-);
-
-return text;
-
-
-}
-
-function normalizeText(
-text
-) {
-return String(text || "")
-.replace(
-/\r/g,
-"\n"
-)
-.replace(
-/[|]/g,
-" "
-)
-.replace(
-/[ \t]+/g,
-" "
-)
-.replace(
-/\n{3,}/g,
-"\n"
-)
-.trim();
-}
-
-function parseNumber(
-value
-) {
-if (
-value === null ||
-value === undefined
-) {
-return null;
-}
-
-
-let normalized =
-    String(value)
-        .trim()
-        .replace(
-            /,/g,
-            "."
-        )
-        .replace(
-            /[^0-9.]/g,
-            ""
         );
 
-if (!normalized) {
-    return null;
-}
-
-const parts =
-    normalized.split(".");
-
-if (
-    parts.length > 2
-) {
-    normalized =
-        parts[0] +
-        "." +
-        parts
-            .slice(1)
-            .join("");
-}
-
-const number =
-    Number(normalized);
-
-if (
-    !Number.isFinite(
-        number
-    )
-) {
-    return null;
-}
-
-return number;
-
-
-}
-
-function findRate(
-text,
-patterns
-) {
-const list =
-Array.isArray(patterns)
-? patterns
-: [patterns];
-
-
-for (
-    const pattern of list
-) {
-    const match =
-        text.match(pattern);
-
-    if (
-        match &&
-        match[1]
-    ) {
-        const value =
-            parseNumber(
-                match[1]
-            );
-
-        if (
-            value !== null
-        ) {
-            return value;
-        }
-    }
-}
-
-return null;
-
-
-}
-
-function extractAllNumbers(
-text
-) {
-const matches =
-text.match(
-/\d+[.,]\d+|\d+/g
-) || [];
-
-
-return matches
-    .map(
-        parseNumber
-    )
-    .filter(
-        (value) =>
-            value !== null
-    );
-
-
+    return result.data.text || "";
 }
 
 async function recognizeRates(
-imageBuffer
+    originalBuffer
 ) {
-const rawText =
-await recognizeText(
-imageBuffer
-);
-
-
-const text =
-    normalizeText(
-        rawText
+    console.log(
+        "Подготавливаем изображение для OCR..."
     );
 
-const rates = {};
-
-
-/*
- * USD
- */
-
-let value =
-    findRate(
-        text,
-        [
-            /USD[\s:=\-]+(\d+[.,]\d+)/i,
-            /US[D0][\s:=\-]+(\d+[.,]\d+)/i,
-            /доллар[\s\S]{0,50}?(\d+[.,]\d+)/i
-        ]
-    );
-
-if (
-    value !== null
-) {
-    rates.USD = value;
-}
-
-
-/*
- * USD / IDUBID
- */
-
-value =
-    findRate(
-        text,
-        [
-            /IDUBID[\s:=\-]+(\d+[.,]\d+)/i,
-            /USD[\s\S]{0,80}?IDUBID[\s:=\-]+(\d+[.,]\d+)/i
-        ]
-    );
-
-if (
-    value !== null
-) {
-    rates.USD_IDUBID =
-        value;
-}
-
-
-/*
- * JPY / SWIFT
- */
-
-value =
-    findRate(
-        text,
-        [
-            /JPY[\s\S]{0,80}?SWIFT[\s:=\-]+(\d+[.,]\d+)/i,
-            /SWIFT[\s:=\-]+(\d+[.,]\d+)/i
-        ]
-    );
-
-if (
-    value !== null
-) {
-    rates.JPY_SWIFT =
-        value;
-}
-
-
-/*
- * JPY / INTERNAL
- */
-
-value =
-    findRate(
-        text,
-        [
-            /JPY[\s\S]{0,80}?INTERNAL[\s:=\-]+(\d+[.,]\d+)/i,
-            /INTERNAL[\s:=\-]+(\d+[.,]\d+)/i
-        ]
-    );
-
-if (
-    value !== null
-) {
-    rates.JPY_INTERNAL =
-        value;
-}
-
-
-/*
- * AFA CASH
- */
-
-value =
-    findRate(
-        text,
-        [
-            /AFA[\s\S]{0,50}?CASH[\s:=\-]+(\d+[.,]\d+)/i,
-            /CASH[\s:=\-]+(\d+[.,]\d+)/i
-        ]
-    );
-
-if (
-    value !== null
-) {
-    rates.JPY_AFA_CASH =
-        value;
-}
-
-
-/*
- * AFA QR
- */
-
-value =
-    findRate(
-        text,
-        [
-            /AFA[\s\S]{0,50}?QR[\s:=\-]+(\d+[.,]\d+)/i,
-            /QR[\s:=\-]+(\d+[.,]\d+)/i
-        ]
-    );
-
-if (
-    value !== null
-) {
-    rates.JPY_AFA_QR =
-        value;
-}
-
-
-/*
- * Остальные валюты.
- */
-
-const currencies = [
-    [
-        "CNY",
-        /CNY[\s:=\-]+(\d+[.,]\d+)/i
-    ],
-    [
-        "KRW",
-        /KRW[\s:=\-]+(\d+[.,]\d+)/i
-    ],
-    [
-        "THB",
-        /THB[\s:=\-]+(\d+[.,]\d+)/i
-    ],
-    [
-        "AED",
-        /AED[\s:=\-]+(\d+[.,]\d+)/i
-    ]
-];
-
-for (
-    const [
-        key,
-        pattern
-    ] of currencies
-) {
-    value =
-        findRate(
-            text,
-            pattern
-        );
-
-    if (
-        value !== null
-    ) {
-        rates[key] =
-            value;
-    }
-}
-
-
-/*
- * Если OCR не распознал буквенные
- * обозначения валют, выводим все числа.
- *
- * Это поможет понять структуру
- * картинки в Render Logs.
- */
-
-if (
-    Object.keys(
-        rates
-    ).length === 0
-) {
-    const numbers =
-        extractAllNumbers(
-            text
-        );
+    const metadata =
+        await sharp(
+            originalBuffer
+        ).metadata();
 
     console.log(
-        "OCR числа:",
-        numbers
+        "Размер картинки:",
+        metadata.width,
+        "x",
+        metadata.height
     );
-}
 
+    /*
+     * Увеличиваем картинку.
+     */
+    const enlarged =
+        await sharp(
+            originalBuffer
+        )
+            .resize({
+                width:
+                    Math.max(
+                        1600,
+                        metadata.width || 1600
+                    ),
+                withoutEnlargement:
+                    false
+            })
+            .sharpen()
+            .normalize()
+            .png()
+            .toBuffer();
 
-console.log(
-    "========== RECOGNIZED RATES =========="
-);
+    /*
+     * Чёрно-белая версия.
+     */
+    const grayscale =
+        await sharp(
+            originalBuffer
+        )
+            .resize({
+                width: 2000,
+                withoutEnlargement: false
+            })
+            .grayscale()
+            .normalize()
+            .sharpen()
+            .png()
+            .toBuffer();
 
-console.log(
-    rates
-);
+    /*
+     * Запускаем несколько режимов.
+     */
+    const texts = [];
 
-console.log(
-    "======================================="
-);
+    try {
+        texts.push(
+            await runTesseract(
+                enlarged,
+                6
+            )
+        );
+    } catch (error) {
+        console.error(
+            "OCR PSM 6:",
+            error.message
+        );
+    }
 
-return rates;
+    try {
+        texts.push(
+            await runTesseract(
+                enlarged,
+                11
+            )
+        );
+    } catch (error) {
+        console.error(
+            "OCR PSM 11:",
+            error.message
+        );
+    }
 
+    try {
+        texts.push(
+            await runTesseract(
+                grayscale,
+                6
+            )
+        );
+    } catch (error) {
+        console.error(
+            "OCR grayscale:",
+            error.message
+        );
+    }
 
+    console.log(
+        "========== OCR TEXT =========="
+    );
+
+    for (const text of texts) {
+        console.log(text);
+    }
+
+    console.log(
+        "==============================="
+    );
+
+    /*
+     * Объединяем результаты.
+     */
+    const combined =
+        texts.join("\n");
+
+    const rates =
+        parseRates(combined);
+
+    console.log(
+        "========== RECOGNIZED RATES =========="
+    );
+
+    console.log(rates);
+
+    console.log(
+        "======================================="
+    );
+
+    return rates;
 }
 
 module.exports = {
-recognizeText,
-recognizeRates,
-normalizeText,
-parseNumber
+    recognizeRates
 };
