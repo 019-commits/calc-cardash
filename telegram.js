@@ -1,130 +1,153 @@
 const axios = require("axios");
 
-/**
- * Получает картинку из Telegram-поста.
- *
- * Возвращает Buffer изображения,
- * который передаётся напрямую в OCR.
- */
-async function getTelegramImage() {
-    const telegramUrl =
-        "https://t.me/LoyaltySwift/1344";
+/*
 
-    console.log(
-        "Открываем Telegram:",
-        telegramUrl
-    );
+* Получает картинку из Telegram-поста.
+*
+* Возвращает:
+*
+* {
+* 
+  buffer: Buffer,
+ 
+* 
+  url: string
 
-    const response = await axios.get(
-        telegramUrl,
-        {
-            timeout: 30000,
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                    "AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) " +
-                    "Chrome/131.0 Safari/537.36"
-            }
-        }
-    );
+* }
+  */
+  async function getTelegramImage(channel) {
+  const telegramUrl =
+  channel
+  ? `https://t.me/${channel}/1344`
+  : "https://t.me/LoyaltySwift/1344";
 
-    const html = response.data;
+  console.log(
+  "Открываем Telegram:",
+  telegramUrl
+  );
 
-    if (
-        !html ||
-        typeof html !== "string"
-    ) {
-        throw new Error(
-            "Telegram вернул пустой HTML"
-        );
-    }
+  const response = await axios.get(
+  telegramUrl,
+  {
+  timeout: 30000,
 
+
+       headers: {
+           "User-Agent":
+               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+               "AppleWebKit/537.36 " +
+               "(KHTML, like Gecko) " +
+               "Chrome/131.0 Safari/537.36"
+       }
+   }
+
+
+  );
+
+  const html =
+  response.data;
+
+  /*
+
+  * Ищем og:image.
+    */
     const patterns = [
-        /property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
-        /content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
-        /property=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
-        /content=["']([^"']+)["'][^>]+property=["']twitter:image["']/i
+    /property=["']og:image[^>]+content=["']([^%22']+)["']/i,
+
+    /content=["']([^%22']+)["'][^>]+property=["']og:image/i,
+
+    /property=["']twitter:image[^>]+content=["']([^%22']+)["']/i,
+
+    /content=["']([^%22']+)["'][^>]+property=["']twitter:image/i
     ];
 
-    let imageUrl = null;
+  let imageUrl = null;
 
-    for (const pattern of patterns) {
-        const match = html.match(pattern);
+  for (const pattern of patterns) {
+  const match =
+  html.match(pattern);
 
-        if (
-            match &&
-            match[1]
-        ) {
-            imageUrl = match[1];
-            break;
-        }
-    }
+ 
+   if (
+       match &&
+       match[1]
+   ) {
+       imageUrl =
+           match[1];
 
-    if (!imageUrl) {
-        throw new Error(
-            "Не удалось найти изображение в Telegram"
-        );
-    }
+       break;
+   }
+ 
 
-    imageUrl = imageUrl.replace(
-        /&amp;/g,
-        "&"
-    );
+  }
 
-    console.log(
-        "Найдена картинка:",
-        imageUrl
-    );
+  if (!imageUrl) {
+  throw new Error(
+  "Не удалось найти изображение в Telegram"
+  );
+  }
 
+  /*
+
+  * HTML entities.
+    */
+    imageUrl =
+    imageUrl
+    .replace(/&/g, "&");
+
+  console.log(
+  "Найдена картинка:",
+  imageUrl
+  );
+
+  /*
+
+  * Скачиваем изображение.
+    */
     const imageResponse =
-        await axios.get(
-            imageUrl,
-            {
-                responseType:
-                    "arraybuffer",
+    await axios.get(
+    imageUrl,
+    {
+    responseType:
+    "arraybuffer",
 
-                timeout: 30000,
+  
+         timeout: 30000,
 
-                headers: {
-                    "User-Agent":
-                        "Mozilla/5.0"
-                }
-            }
-        );
+         headers: {
+             "User-Agent":
+                 "Mozilla/5.0"
+         }
+     }
+  
 
-    const imageBuffer =
-        Buffer.from(
-            imageResponse.data
-        );
-
-    if (
-        !Buffer.isBuffer(
-            imageBuffer
-        )
-    ) {
-        throw new Error(
-            "Не удалось создать Buffer изображения"
-        );
-    }
-
-    if (
-        imageBuffer.length === 0
-    ) {
-        throw new Error(
-            "Telegram вернул пустое изображение"
-        );
-    }
-
-    console.log(
-        "Изображение загружено:",
-        imageBuffer.length,
-        "bytes"
     );
 
-    return imageBuffer;
-}
+  const imageBuffer =
+  Buffer.from(
+  imageResponse.data
+  );
+
+  if (
+  imageBuffer.length === 0
+  ) {
+  throw new Error(
+  "Telegram вернул пустое изображение"
+  );
+  }
+
+  console.log(
+  "Изображение загружено:",
+  imageBuffer.length,
+  "bytes"
+  );
+
+  return {
+  buffer: imageBuffer,
+  url: imageUrl
+  };
+  }
 
 module.exports = {
-    getTelegramImage
+getTelegramImage
 };
